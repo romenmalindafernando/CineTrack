@@ -63,6 +63,20 @@ export async function searchMovies(query: string): Promise<Movie[]> {
   }));
 }
 
+export async function getPopularMovies(): Promise<Movie[]> {
+  const response = await api.get<SearchResponse<MovieSearchItem>>(
+    "/movies/popular",
+  );
+
+  return response.data.results.map((item) => ({
+    id: item.id,
+    title: item.title,
+    year: toYear(item.releaseDate),
+    rating: item.rating ?? 0,
+    genre: "Movie",
+    poster: toPoster(item.posterPath),
+  }));
+}
 export async function searchTvShows(query: string): Promise<Movie[]> {
   const response = await api.get<SearchResponse<TvSearchItem>>(
     "/tv/search",
@@ -116,6 +130,14 @@ export async function getTvDetails(tvId: number): Promise<TvDetails> {
   return response.data;
 }
 
+
+export interface GenreStats {
+  genreId: number;
+  genreName: string;
+  moviesWatched: number;
+  tvSeriesWatched: number;
+  totalTitles: number;
+}
 export interface UserStats {
   moviesWatched: number;
   tvSeriesWatched: number;
@@ -156,6 +178,15 @@ export interface ViewingHistoryRecord {
   episodeNumber: number | null;
 }
 
+
+export async function getGenreStats(
+  userId: string,
+): Promise<GenreStats[]> {
+  const response = await api.get<GenreStats[]>(
+    `/users/${userId}/stats/genres`,
+  );
+  return response.data;
+}
 export async function getUserStats(userId: string): Promise<UserStats> {
   const response = await api.get<UserStats>(`/users/${userId}/stats`);
   return response.data;

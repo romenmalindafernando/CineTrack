@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 import {
   searchMovies,
   searchTvShows,
   getUserStats,
   getYearlyStats,
+  getMonthlyStats,
+  getGenreStats,
   getViewingHistory,
   getMovieDetails,
   getTvDetails,
@@ -15,6 +18,8 @@ import {
 import type {
   UserStats,
   YearlyStats,
+  MonthlyStats,
+  GenreStats,
   ViewingHistoryRecord,
 } from "./services/cinetrackApi";
 import "./App.css";
@@ -52,6 +57,22 @@ function App() {
     useState<Array<{ record: ViewingHistoryRecord; title: Movie }>>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
+  const [backendMonthlyStats, setBackendMonthlyStats] =
+    useState<MonthlyStats[]>([]);
+  const [backendGenreStats, setBackendGenreStats] =
+    useState<GenreStats[]>([]);
+  const [genreStatsError, setGenreStatsError] = useState("");
+  const [annualMovieGoal, setAnnualMovieGoal] = useState<number>(() => {
+    const savedGoal = Number(localStorage.getItem("cinetrack-annual-movie-goal"));
+    return Number.isFinite(savedGoal) && savedGoal >= 1 ? savedGoal : 100;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(
+      "cinetrack-annual-movie-goal",
+      String(Math.max(1, annualMovieGoal)),
+    );
+  }, [annualMovieGoal]);
 
   const refreshDashboardData = useCallback(async () => {
     setDashboardLoading(true);
@@ -81,6 +102,53 @@ function App() {
   useEffect(() => {
     void refreshDashboardData();
   }, [refreshDashboardData]);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMonthlyStatistics() {
+      try {
+        const stats = await getMonthlyStats(DASHBOARD_USER_ID);
+        if (!cancelled) {
+          setBackendMonthlyStats(stats);
+        }
+      } catch {
+        if (!cancelled) {
+          setBackendMonthlyStats([]);
+        }
+      }
+    }
+
+    void loadMonthlyStatistics();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadGenreStatistics() {
+      try {
+        const stats = await getGenreStats(DASHBOARD_USER_ID);
+        if (!cancelled) {
+          setBackendGenreStats(stats);
+          setGenreStatsError("");
+        }
+      } catch {
+        if (!cancelled) {
+          setBackendGenreStats([]);
+          setGenreStatsError("Genre insights are temporarily unavailable.");
+        }
+      }
+    }
+
+    void loadGenreStatistics();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -558,14 +626,14 @@ const statisticsMonths = Array.from({ length: 6 }, (_, index) => {
   date.setMonth(date.getMonth() - (5 - index));
 
   const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  const backendMonth = backendYearlyStats?.monthlyBreakdown.find(
-    (month) => month.month === key,
-  );
+  const backendMonth = backendMonthlyStats.find((month) => month.month === key);
 
   return {
     key,
     label: date.toLocaleDateString(undefined, { month: "short" }),
-    count: backendYearlyStats ? (backendMonth?.totalActivities ?? 0) : 0,
+    count: backendMonth?.totalActivities ?? 0,
+    viewingMinutes: backendMonth?.totalViewingMinutes ?? 0,
+    viewingHours: Number(((backendMonth?.totalViewingMinutes ?? 0) / 60).toFixed(2)),
   };
 });
 
@@ -574,6 +642,34 @@ const maxMonthlyCount = Math.max(
   ...statisticsMonths.map((month) => month.count),
 );
 
+const annualMoviesWatched = backendYearlyStats?.moviesWatched ?? 0;
+const annualGoalProgress = Math.min(
+  100,
+  Math.round((annualMoviesWatched / Math.max(1, annualMovieGoal)) * 100),
+);
+
+const totalGenreTitles = backendGenreStats.reduce(
+  (total, genre) => total + genre.totalTitles,
+  0,
+);
+
+const genreChartColors = ["#a78bfa", "#f472b6", "#38bdf8", "#fbbf24", "#34d399", "#fb7185"];
+
+const moviesWithRuntime = backendHistory.filter(
+  (record) =>
+    record.mediaType === "movie" &&
+    typeof record.runtimeMinutes === "number" &&
+    record.runtimeMinutes > 0,
+);
+
+const averageMovieRuntime = moviesWithRuntime.length
+  ? Math.round(
+      moviesWithRuntime.reduce(
+        (total, record) => total + (record.runtimeMinutes ?? 0),
+        0,
+      ) / moviesWithRuntime.length,
+    )
+  : null;
 const watchedMovieCount = backendStats?.moviesWatched ?? 0;
 
 const watchedTvCount = backendStats?.episodesWatched ?? 0;
@@ -649,14 +745,14 @@ const sectionTitle =
               <div className="decoration-ring ring-one" />
               <div className="decoration-ring ring-two" />
               <div className="decoration-center">C</div>
-              <span className="decoration-star star-one">✦</span>
+              <span className="decoration-star star-one">âœ¦</span>
               <span className="decoration-star star-two">{"\u2727"}</span>
             </div>
           </section>
 
           <section className="stats-row">
             <div className="stat-card">
-              <span className="stat-icon purple">▣</span>
+              <span className="stat-icon purple">â–£</span>
               <div>
                 <p>IN YOUR WATCHLIST</p>
                 <h3>
@@ -666,7 +762,7 @@ const sectionTitle =
             </div>
 
             <div className="stat-card">
-              <span className="stat-icon pink">▶</span>
+              <span className="stat-icon pink">â–¶</span>
               <div>
                 <p>TITLES TO EXPLORE</p>
                 <h3>{movies.length.toString().padStart(2, "0")}</h3>
@@ -674,7 +770,7 @@ const sectionTitle =
             </div>
 
             <div className="stat-card">
-              <span className="stat-icon yellow">★</span>
+              <span className="stat-icon yellow">â˜…</span>
               <div>
                 <p>TOP COMMUNITY RATING</p>
                 <h3>
@@ -693,7 +789,7 @@ const sectionTitle =
               </div>
 
               <span className="featured-label">
-                ✦ HANDPICKED FOR YOU
+                âœ¦ HANDPICKED FOR YOU
               </span>
             </div>
 
@@ -745,7 +841,7 @@ const sectionTitle =
                   </button>
 
                   <span className="featured-rating">
-                    ★ 8.7 <small>/ 10</small>
+                    â˜… 8.7 <small>/ 10</small>
                   </span>
                 </div>
               </div>
@@ -853,12 +949,50 @@ const sectionTitle =
                   <div className="stat-card">
                     <span className="stat-icon pink">{"\u23F1"}</span>
                     <div>
-                      <p>TOTAL VIEWING TIME</p>
+                      <p>VIEWING TIME THIS YEAR</p>
                       <h3>{formatViewingTime(totalViewingMinutes)}</h3>
                     </div>
                   </div>
                 </div>
 
+                <section className="annual-goal-panel">
+                  <div className="annual-goal-heading">
+                    <div>
+                      <p className="eyebrow">YOUR YEAR IN FILM</p>
+                      <h3>{annualMoviesWatched} / {annualMovieGoal} movies in {new Date().getFullYear()}</h3>
+                    </div>
+                    <label className="annual-goal-input">
+                      Annual goal
+                      <input
+                        type="number"
+                        min="1"
+                        max="10000"
+                        value={annualMovieGoal}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (Number.isFinite(value) && value >= 1 && value <= 10000) {
+                            setAnnualMovieGoal(Math.floor(value));
+                          }
+                        }}
+                        aria-label="Annual movie goal"
+                      />
+                    </label>
+                  </div>
+                  <div
+                    className="annual-goal-track"
+                    role="progressbar"
+                    aria-label="Annual movie goal progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={annualGoalProgress}
+                  >
+                    <div className="annual-goal-fill" style={{ width: `${annualGoalProgress}%` }} />
+                  </div>
+                  <div className="annual-goal-footer">
+                    <span>{annualGoalProgress}% completed</span>
+                    <span>{Math.max(0, annualMovieGoal - annualMoviesWatched)} to go</span>
+                  </div>
+                </section>
                 <div className="statistics-panels">
                   <section className="statistics-panel">
                     <div className="statistics-panel-heading">
@@ -943,7 +1077,139 @@ const sectionTitle =
                   </section>
                 </div>
 
-                <section className="statistics-tip">
+                                <div className="statistics-panels statistics-panels-extra">
+                  <section className="statistics-panel">
+                    <div className="statistics-panel-heading">
+                      <div>
+                        <p className="eyebrow">TIME INVESTED</p>
+                        <h3>Monthly viewing time</h3>
+                      </div>
+                      <span className="statistics-period">LAST 6 MONTHS</span>
+                    </div>
+
+                    <div className="monthly-viewing-chart">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={statisticsMonths} margin={{ top: 12, right: 10, left: -18, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#343344" />
+                          <XAxis dataKey="label" stroke="#a5a1b5" tickLine={false} axisLine={false} />
+                          <YAxis stroke="#a5a1b5" tickLine={false} axisLine={false} />
+                          <Tooltip
+                            contentStyle={{ background: "#191824", border: "1px solid #3b374d", borderRadius: "10px" }}
+                            labelStyle={{ color: "#ffffff" }}
+                            formatter={(value) => [`${value ?? 0} hours`, "Viewing time"]}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="viewingHours"
+                            name="Viewing time"
+                            stroke="#a78bfa"
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: "#a78bfa" }}
+                            activeDot={{ r: 6 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <p className="statistics-note">
+                      Viewing hours are calculated from the monthly statistics returned by CineTrack.
+                    </p>
+                    <div className="average-runtime">
+                      <span>Average movie runtime</span>
+                      <strong>
+                        {averageMovieRuntime === null
+                          ? "Not enough runtime data"
+                          : `${Math.floor(averageMovieRuntime / 60)}h ${averageMovieRuntime % 60}m`}
+                      </strong>
+                    </div>
+                  </section>
+
+                  <section className="statistics-panel">
+                    <div className="statistics-panel-heading">
+                      <div>
+                        <p className="eyebrow">YOUR TASTE</p>
+                        <h3>Genre affinity</h3>
+                      </div>
+                    </div>
+
+                    {genreStatsError ? (
+                      <div className="statistics-empty">
+                        <p>{genreStatsError}</p>
+                      </div>
+                    ) : totalGenreTitles === 0 ? (
+                      <div className="statistics-empty">
+                        <p>Your genre insights will appear when CineTrack has genre data for your watched titles.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="genre-chart">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={backendGenreStats.filter((genre) => genre.totalTitles > 0)}
+                                dataKey="totalTitles"
+                                nameKey="genreName"
+                                cx="50%"
+                                cy="50%"
+                                innerRadius="55%"
+                                outerRadius="82%"
+                                paddingAngle={3}
+                              >
+                                {backendGenreStats
+                                  .filter((genre) => genre.totalTitles > 0)
+                                  .map((genre, index) => (
+                                    <Cell
+                                      key={genre.genreId}
+                                      fill={genreChartColors[index % genreChartColors.length]}
+                                    />
+                                  ))}
+                              </Pie>
+                              <Tooltip
+                                contentStyle={{ background: "#191824", border: "1px solid #3b374d", borderRadius: "10px" }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="genre-list">
+                          {backendGenreStats
+                            .filter((genre) => genre.totalTitles > 0)
+                            .slice()
+                            .sort((a, b) => b.totalTitles - a.totalTitles)
+                            .slice(0, 5)
+                            .map((genre) => {
+                              const originalIndex = backendGenreStats.findIndex(
+                                (item) => item.genreId === genre.genreId,
+                              );
+                              const percentage = Math.round(
+                                (genre.totalTitles / totalGenreTitles) * 100,
+                              );
+
+                              return (
+                                <div className="genre-list-row" key={genre.genreId}>
+                                  <span
+                                    className="genre-dot"
+                                    style={{
+                                      background: genreChartColors[
+                                        originalIndex % genreChartColors.length
+                                      ],
+                                    }}
+                                  />
+                                  <span className="genre-name">{genre.genreName}</span>
+                                  <span className="genre-count">{genre.totalTitles}</span>
+                                  <span className="genre-percentage">{percentage}%</span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </>
+                    )}
+                    <p className="statistics-note">
+                      Percentages use the genre totals returned by CineTrack; one title may belong to multiple genres.
+                    </p>
+                  </section>
+                </div>
+<section className="statistics-tip">
                   <span className="stat-icon purple">{"\u2726"}</span>
                   <div>
                     <h3>Keep building your story</h3>
@@ -1024,7 +1290,7 @@ const sectionTitle =
                               Season {record.seasonNumber ?? "?"}, Episode{" "}
                               {record.episodeNumber ?? "?"}
                               {record.runtimeMinutes != null
-                                ? ` · ${record.runtimeMinutes} min`
+                                ? ` Â· ${record.runtimeMinutes} min`
                                 : ""}
                             </p>
                           )}
@@ -1139,7 +1405,7 @@ const sectionTitle =
                 )
               )) : displayedMovies.length === 0 ? (
               <div className="empty-state">
-                <span className="empty-icon">⌕</span>
+                <span className="empty-icon">âŒ•</span>
                 <h3>No movies found</h3>
 
                 <p>
@@ -1233,7 +1499,7 @@ const sectionTitle =
             />
           )}
           <footer className="footer">
-            <span>© 2026 CineTrack</span>
+            <span>Â© 2026 CineTrack</span>
             <span>
               MADE FOR THE LOVE OF CINEMA{" "}
               <span className="footer-heart">{"\u2665"}</span>
@@ -1246,7 +1512,3 @@ const sectionTitle =
 }
 
 export default App;
-
-
-
-

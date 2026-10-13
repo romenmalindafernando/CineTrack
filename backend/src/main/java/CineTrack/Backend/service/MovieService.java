@@ -94,4 +94,48 @@ public class MovieService {
                 genres
         );
     }
+
+    public TmdbMovieResponse getMovieRecommendations(int movieId) {
+        return restClient.get()
+                .uri("/movie/" + movieId + "/recommendations")
+                .header("Authorization", "Bearer " + apiToken)
+                .retrieve()
+                .body(TmdbMovieResponse.class);
+    }
+
+    public MovieSearchResponseDto getPopularMoviesForDisplay() {
+
+        TmdbMovieResponse response = getPopularMovies();
+
+        if (response == null || response.getResults() == null) {
+            return new MovieSearchResponseDto(1, 0, 0, List.of());
+        }
+
+        List<MovieDto> movies = response.getResults()
+                .stream()
+                .map(movie -> new MovieDto(
+                        movie.getId(),
+                        movie.getTitle(),
+                        movie.getReleaseDate(),
+                        movie.getVoteAverage(),
+                        movie.getPosterPath(),
+                        movie.getOverview()
+                ))
+                .toList();
+
+        return new MovieSearchResponseDto(
+                response.getPage(),
+                response.getTotalPages(),
+                response.getTotalResults(),
+                movies
+        );
+    }
+
+    public TmdbMovieResponse getPopularMovies() {
+        return restClient.get()
+                .uri("/movie/popular")
+                .header("Authorization", "Bearer " + apiToken)
+                .retrieve()
+                .body(TmdbMovieResponse.class);
+    }
 }
