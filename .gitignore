@@ -1,0 +1,51 @@
+﻿# Dependencies and generated build files
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/target/
+**/build/
+**/coverage/
+**/.vite/
+
+# Environment variables and credentials
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local user-specific data
+/backend/user.json
+
+# Recovery and historical backup folders
+/backend-recovery-before-restore/
+/backend/backup-*/
+/frontend/cinetrack-fix-backup-*/
+
+# Backup and temporary files anywhere in the project
+*.bak*
+*.backup*
+*.old
+*.tmp
+*.swp
+*.error-backup
+*.watchlist-backup
+
+# Temporary patch scripts
+/frontend/patch-*.ps1
+
+# Accidental command-output file
+/ersRomenCineTrack*
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# All remaining backup-named files
+*backup*
+
+
+# Pre-fix configuration backups
+*.before-fix
+

@@ -1,0 +1,66 @@
+:root {
+  color-scheme: dark;
+  font-family: "DM Sans", sans-serif;
+  background: #0c0b12;
+  color: #f1f0f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: #0c0b12;
+  color: #f1f0f7;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #0c0b12;
+  color: #f1f0f7;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: #ffffff;
+}
+
+p,
+label,
+li {
+  color: #d5d2e0;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  color: #f5f3ff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #aaa5bb;
+  opacity: 1;
+}
+
+::selection {
+  background: #8e6bed88;
+  color: #ffffff;
+}
