@@ -1,6 +1,7 @@
 package CineTrack.Backend.controller;
 
 import CineTrack.Backend.dto.MovieSearchResponseDto;
+import CineTrack.Backend.dto.CastMemberDto;
 import CineTrack.Backend.service.MovieService;
 import CineTrack.Backend.service.RecommendationService;
 import CineTrack.Backend.dto.MovieRecommendationDto;
@@ -31,7 +32,11 @@ public MovieDetailsDto getMovieDetails(
         this.recommendationService = recommendationService;
     }
 
-    @GetMapping("/popular")
+    @GetMapping("/{movieId}/cast")
+public List<CastMemberDto> getMovieCast(@PathVariable int movieId) {
+    return movieService.getMovieCast(movieId);
+}
+@GetMapping("/popular")
     public MovieSearchResponseDto getPopularMovies() {
         return movieService.getPopularMoviesForDisplay();
     }

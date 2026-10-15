@@ -3,11 +3,30 @@ import type { Movie } from "../data/movies";
 
 const api = axios.create({
   baseURL: "/api",
+  withCredentials: true,
   headers: {
     Accept: "application/json",
   },
 });
 
+api.interceptors.request.use(async (config) => {
+  const method = (config.method ?? "get").toLowerCase();
+  const changesData = ["post", "put", "patch", "delete"].includes(method);
+
+  if (changesData && !config.url?.endsWith("/auth/csrf")) {
+    const csrfResponse = await api.get<{
+      headerName: string;
+      token: string;
+    }>("/auth/csrf");
+
+    config.headers.set(
+      csrfResponse.data.headerName,
+      csrfResponse.data.token,
+    );
+  }
+
+  return config;
+});
 interface MovieSearchItem {
   id: number;
   title: string;
@@ -77,6 +96,20 @@ export async function getPopularMovies(): Promise<Movie[]> {
     poster: toPoster(item.posterPath),
   }));
 }
+export async function getPopularTvShows(): Promise<Movie[]> {
+  const response = await api.get<SearchResponse<TvSearchItem>>(
+    "/tv/popular",
+  );
+
+  return response.data.results.map((item) => ({
+    id: item.id,
+    title: item.name,
+    year: toYear(item.firstAirDate),
+    rating: item.rating ?? 0,
+    genre: "TV Series",
+    poster: toPoster(item.posterPath),
+  }));
+}
 export async function searchTvShows(query: string): Promise<Movie[]> {
   const response = await api.get<SearchResponse<TvSearchItem>>(
     "/tv/search",
@@ -128,6 +161,41 @@ export interface TvDetails {
 export async function getTvDetails(tvId: number): Promise<TvDetails> {
   const response = await api.get<TvDetails>(`/tv/${tvId}`);
   return response.data;
+}
+
+export interface CastMember {
+  id: number;
+  name: string;
+  character: string;
+  profilePath: string | null;
+}
+
+interface TmdbCastMemberResponse {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+}
+
+async function getCast(endpoint: string): Promise<CastMember[]> {
+  const response = await api.get<TmdbCastMemberResponse[]>(endpoint);
+
+  return response.data.map((member) => ({
+    id: member.id,
+    name: member.name,
+    character: member.character,
+    profilePath: member.profile_path,
+  }));
+}
+
+export async function getMovieCast(
+  movieId: number,
+): Promise<CastMember[]> {
+  return getCast(`/movies/${movieId}/cast`);
+}
+
+export async function getTvCast(tvId: number): Promise<CastMember[]> {
+  return getCast(`/tv/${tvId}/cast`);
 }
 
 
@@ -284,4 +352,44 @@ export async function removeWatchedEpisode(
   await api.delete(
     `/users/${userId}/tv/${tvId}/seasons/${seasonNumber}/episodes/${episodeNumber}/watched`,
   );
+}
+
+
+// Actor profile and combined movie/TV filmography
+export interface ActorDetails {
+  id: number;
+  name: string;
+  biography: string;
+  birthday: string | null;
+  placeOfBirth: string | null;
+  profilePath: string | null;
+  knownForDepartment: string | null;
+}
+
+export interface ActorCredit {
+  id: number;
+  title: string;
+  mediaType: "movie" | "tv";
+  releaseDate: string | null;
+  character: string | null;
+  rating: number;
+  voteCount: number;
+  posterPath: string | null;
+  overview: string | null;
+}
+
+export async function getActorDetails(
+  actorId: number,
+): Promise<ActorDetails> {
+  const response = await api.get<ActorDetails>(`/actors/${actorId}`);
+  return response.data;
+}
+
+export async function getActorFilmography(
+  actorId: number,
+): Promise<ActorCredit[]> {
+  const response = await api.get<ActorCredit[]>(
+    `/actors/${actorId}/filmography`,
+  );
+  return response.data;
 }

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from "recharts";
 import {
+  getPopularMovies,
+  getPopularTvShows,
   searchMovies,
   searchTvShows,
   getUserStats,
@@ -24,28 +26,83 @@ import type {
 } from "./services/cinetrackApi";
 import "./App.css";
 
-import { movies, type Movie } from "./data/movies";
-import * as tvShowData from "./data/tvShows";
+import { type Movie } from "./data/movies";
+
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import MovieCard from "./components/MovieCard";
 import MovieDetails from "./components/MovieDetails";
 import TvDetails from "./components/TvDetails";
+import ActorProfile from "./components/ActorProfile";
 
-const tvShows = Object.values(tvShowData).find(Array.isArray) as
-  | typeof movies
-  | undefined ?? [];
 
 const DASHBOARD_USER_ID = "6ac9f4a41aaaa43b220d0fe1";
 
 function App() {
   const [activePage, setActivePage] = useState("Discover");
+  const [featuredMovie, setFeaturedMovie] = useState<Movie | null>(null);
+  const [discoverVisit, setDiscoverVisit] = useState(0);
   const [search, setSearch] = useState("");
   const [selectedMovieId, setSelectedMovieId] = useState<number | null>(null);
   const [selectedTvId, setSelectedTvId] = useState<number | null>(null);
-  const [apiMovies, setApiMovies] = useState<typeof movies>([]);
+  const [selectedActorId, setSelectedActorId] = useState<number | null>(null);
+  const [actorReturnPage, setActorReturnPage] = useState("Discover");
+
+  const openActorProfile = (actorId: number) => {
+    setActorReturnPage(activePage);
+    setSelectedMovieId(null);
+    setSelectedTvId(null);
+    setSelectedActorId(actorId);
+    setActivePage("Actor Profile");
+  };
+  const [apiMovies, setApiMovies] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
+
+  const [cachedTitles, setCachedTitles] = useState<Movie[]>(() => {
+    try {
+      const cached = localStorage.getItem("cinetrack-cached-titles");
+      return cached ? (JSON.parse(cached) as Movie[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    if (activePage !== "Discover") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function rotateFeaturedMovie() {
+      try {
+        const popularMovies = await getPopularMovies();
+
+        if (cancelled || popularMovies.length === 0) {
+          return;
+        }
+
+        setFeaturedMovie((currentMovie) => {
+          const alternatives = popularMovies.filter(
+            (movie) => movie.id !== currentMovie?.id,
+          );
+          const candidates =
+            alternatives.length > 0 ? alternatives : popularMovies;
+          const randomIndex = Math.floor(Math.random() * candidates.length);
+
+          return candidates[randomIndex] ?? currentMovie ?? popularMovies[0] ?? null;
+        });
+      } catch {
+        // Keep the existing featured movie if the API is unavailable.
+      }
+    }
+
+    void rotateFeaturedMovie();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePage, discoverVisit]);
 
   const [backendStats, setBackendStats] = useState<UserStats | null>(null);
   const [backendYearlyStats, setBackendYearlyStats] =
@@ -81,18 +138,27 @@ function App() {
     try {
       const currentYear = new Date().getFullYear();
 
-      const [stats, yearly, history] = await Promise.all([
+      const [stats, yearly, history, monthly, genres] = await Promise.all([
         getUserStats(DASHBOARD_USER_ID),
         getYearlyStats(DASHBOARD_USER_ID, currentYear),
         getViewingHistory(DASHBOARD_USER_ID),
+        getMonthlyStats(DASHBOARD_USER_ID),
+        getGenreStats(DASHBOARD_USER_ID),
       ]);
 
       setBackendStats(stats);
       setBackendYearlyStats(yearly);
       setBackendHistory(history);
-    } catch {
+      setBackendMonthlyStats(monthly);
+      setBackendGenreStats(genres);
+      setGenreStatsError("");
+    } catch (error) {
+      console.error("[CineTrack] Dashboard refresh failed:", error);
       setDashboardError(
-        "Backend statistics are unavailable. Real viewing totals cannot currently be refreshed.",
+        "Some dashboard data could not be refreshed. Please check the backend connection and try again.",
+      );
+      setGenreStatsError(
+        "Genre insights could not be refreshed. Please try again.",
       );
     } finally {
       setDashboardLoading(false);
@@ -100,55 +166,13 @@ function App() {
   }, []);
 
   useEffect(() => {
-    void refreshDashboardData();
+    const timer = window.setTimeout(() => {
+      void refreshDashboardData();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [refreshDashboardData]);
-  useEffect(() => {
-    let cancelled = false;
 
-    async function loadMonthlyStatistics() {
-      try {
-        const stats = await getMonthlyStats(DASHBOARD_USER_ID);
-        if (!cancelled) {
-          setBackendMonthlyStats(stats);
-        }
-      } catch {
-        if (!cancelled) {
-          setBackendMonthlyStats([]);
-        }
-      }
-    }
-
-    void loadMonthlyStatistics();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadGenreStatistics() {
-      try {
-        const stats = await getGenreStats(DASHBOARD_USER_ID);
-        if (!cancelled) {
-          setBackendGenreStats(stats);
-          setGenreStatsError("");
-        }
-      } catch {
-        if (!cancelled) {
-          setBackendGenreStats([]);
-          setGenreStatsError("Genre insights are temporarily unavailable.");
-        }
-      }
-    }
-
-    void loadGenreStatistics();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,42 +251,60 @@ function App() {
   }, [backendHistory]);
 
   useEffect(() => {
+    let cancelled = false;
+    const canSearch = ["Discover", "Movies", "TV Shows"].includes(activePage);
     const query = search.trim();
 
-    if (!query) {
-      setApiMovies([]);
-      setIsSearching(false);
-      setSearchError("");
-      return;
-    }
-
-    if (!["Discover", "Movies", "TV Shows"].includes(activePage)) {
-      setIsSearching(false);
-      setSearchError("");
-      return;
-    }
-
-    let cancelled = false;
-    setIsSearching(true);
-    setSearchError("");
-
     const timer = window.setTimeout(async () => {
+      if (!canSearch) {
+        setIsSearching(false);
+        setSearchError("");
+        return;
+      }
+
+      setIsSearching(true);
+      setSearchError("");
+
       try {
-        const results =
-          activePage === "TV Shows"
+        const results = query
+          ? activePage === "TV Shows"
             ? await searchTvShows(query)
-            : await searchMovies(query);
+            : await searchMovies(query)
+          : activePage === "TV Shows"
+            ? await getPopularTvShows()
+            : await getPopularMovies();
 
         if (!cancelled) {
           setApiMovies(results);
+
+          if (results.length > 0) {
+            setCachedTitles((current) => {
+              const combined = [...current];
+
+              for (const item of results) {
+                const index = combined.findIndex(
+                  (existing) =>
+                    existing.id === item.id && existing.genre === item.genre,
+                );
+
+                if (index >= 0) {
+                  combined[index] = item;
+                } else {
+                  combined.push(item);
+                }
+              }
+
+              return combined;
+            });
+          }
         }
       } catch (error) {
         if (!cancelled) {
           setApiMovies([]);
           setSearchError(
             axios.isAxiosError(error)
-              ? "Unable to load results. Check that the backend is running and try again."
-              : "Something went wrong while searching. Please try again.",
+              ? "Unable to load TMDB results. Check that the backend is running and try again."
+              : "Something went wrong while loading titles. Please try again.",
           );
         }
       } finally {
@@ -270,7 +312,7 @@ function App() {
           setIsSearching(false);
         }
       }
-    }, 350);
+    }, canSearch && query ? 350 : 0);
 
     return () => {
       cancelled = true;
@@ -301,7 +343,7 @@ function App() {
       return [...new Set(
         legacy
           .filter((id) => !oldTvIds.has(id))
-          .filter((id) => !tvShows.some((show) => show.id === id))
+          .filter((id) => ![1396, 66732, 100088, 119051].includes(id))
           .map((id) => oldMovieIds.get(id) ?? id),
       )];
     } catch {
@@ -326,7 +368,7 @@ function App() {
       ]);
 
       return [...new Set([
-        ...legacy.filter((id) => tvShows.some((show) => show.id === id)),
+        ...legacy.filter((id) => [1396, 66732, 100088, 119051].includes(id)),
         ...legacy.flatMap((id) =>
           oldTvIds.has(id) ? [oldTvIds.get(id)!] : [],
         ),
@@ -336,14 +378,6 @@ function App() {
     }
   });
 
-  const [cachedTitles, setCachedTitles] = useState<typeof movies>(() => {
-    try {
-      const cached = localStorage.getItem("cinetrack-cached-titles");
-      return cached ? (JSON.parse(cached) as typeof movies) : [];
-    } catch {
-      return [];
-    }
-  });
 
   const [watchedTitles, setWatchedTitles] = useState<
     Array<{ id: number; type: "movie" | "tv"; watchedAt: string }>
@@ -366,6 +400,9 @@ function App() {
 
   const navigateToPage = (page: string) => {
     setActivePage(page);
+    if (page === "Discover") {
+      setDiscoverVisit((visit) => visit + 1);
+    }
     setActiveGenre("All");
     setSearch("");
   };
@@ -398,39 +435,7 @@ function App() {
     );
   }, [cachedTitles]);
 
-  useEffect(() => {
-    if (apiMovies.length === 0) return;
 
-    setCachedTitles((current) => {
-      const combined = [...current];
-
-      for (const item of apiMovies) {
-        const index = combined.findIndex(
-          (existing) =>
-            existing.id === item.id && existing.genre === item.genre,
-        );
-
-        if (index >= 0) {
-          combined[index] = item;
-        } else {
-          combined.push(item);
-        }
-      }
-
-      return combined;
-    });
-  }, [apiMovies]);
-
-  const filteredMovies = movies.filter((movie) => {
-    const matchesSearch = movie.title
-      .toLowerCase()
-      .includes(search.toLowerCase());
-
-    const matchesGenre =
-      activeGenre === "All" || movie.genre === activeGenre;
-
-    return matchesSearch && matchesGenre;
-  });
 
   const toggleWatchlist = (id: number) => {
     setSavedMovies((current) =>
@@ -454,19 +459,11 @@ function App() {
       (entry) => entry.id === id && entry.type === type,
     );
 
-    // The built-in sample data must never create real viewing records.
-    const isLocalPlaceholder =
-      type === "movie"
-        ? movies.some((item) => item.id === id)
-        : tvShows.some((item) => item.id === id);
-
     try {
-      if (!isLocalPlaceholder) {
-        if (currentlyWatched) {
-          await removeFromWatched(DASHBOARD_USER_ID, id, type);
-        } else {
-          await addToWatched(DASHBOARD_USER_ID, id, type);
-        }
+      if (currentlyWatched) {
+        await removeFromWatched(DASHBOARD_USER_ID, id, type);
+      } else {
+        await addToWatched(DASHBOARD_USER_ID, id, type);
       }
 
       setWatchedTitles((current) => {
@@ -479,7 +476,7 @@ function App() {
         return [...current, { id, type, watchedAt: new Date().toISOString() }];
       });
 
-      if (!isLocalPlaceholder) {
+      {
         await refreshDashboardData();
       }
     } catch {
@@ -569,56 +566,32 @@ function App() {
     }
   };
 
-const allMovieCards = [
-  ...movies,
-  ...cachedTitles.filter((item) => item.genre !== "TV Series"),
-];
+const allMovieCards = cachedTitles.filter((item) => item.genre !== "TV Series");
 
-const allTvCards = [
-  ...tvShows,
-  ...cachedTitles.filter((item) => item.genre === "TV Series"),
-];
+const allTvCards = cachedTitles.filter((item) => item.genre === "TV Series");
 
 const localTvShows = allTvCards
   .filter(
     (show, index, items) =>
       items.findIndex((item) => item.id === show.id) === index,
   )
-  .filter((show) => {
-    const matchesSearch = show.title
-      .toLowerCase()
-      .includes(search.toLowerCase());
-
-    const matchesGenre =
-      activeGenre === "All" || show.genre === activeGenre;
-
-    return matchesSearch && matchesGenre;
-  });
+  .filter((show) =>
+    show.title.toLowerCase().includes(search.toLowerCase()),
+  );
 
 const displayedMovies =
-  search.trim() && ["Discover", "Movies", "TV Shows"].includes(activePage)
-    ? apiMovies
-    : activePage === "My Library"
-      ? [
-          ...allMovieCards
-            .filter((movie) => savedMovies.includes(movie.id))
-            .filter(
-              (movie, index, items) =>
-                items.findIndex((item) => item.id === movie.id) === index,
-            )
-            .filter((movie) => {
-              const matchesSearch = movie.title
-                .toLowerCase()
-                .includes(search.toLowerCase());
-              const matchesGenre =
-                activeGenre === "All" || movie.genre === activeGenre;
-              return matchesSearch && matchesGenre;
-            }),
-          ...localTvShows.filter((show) => savedTvShows.includes(show.id)),
-        ]
-      : activePage === "TV Shows"
-        ? localTvShows
-        : filteredMovies;
+  activePage === "My Library"
+    ? [
+        ...allMovieCards.filter((movie) => savedMovies.includes(movie.id)),
+        ...localTvShows.filter((show) => savedTvShows.includes(show.id)),
+      ].filter(
+        (movie, index, items) =>
+          items.findIndex((item) => item.id === movie.id) === index &&
+          movie.title.toLowerCase().includes(search.toLowerCase()),
+      )
+    : ["Discover", "Movies", "TV Shows"].includes(activePage)
+      ? apiMovies
+      : [];
 
 const statisticsMonths = Array.from({ length: 6 }, (_, index) => {
   const date = new Date();
@@ -722,7 +695,9 @@ const sectionTitle =
           onSearchChange={setSearch}
         />
 
-        <div className="page-content">
+        <div className="page-content" key={activePage}>
+          {activePage === "Discover" && (
+            <>
           <section className="welcome-row">
             <div>
               <p className="eyebrow">
@@ -745,14 +720,14 @@ const sectionTitle =
               <div className="decoration-ring ring-one" />
               <div className="decoration-ring ring-two" />
               <div className="decoration-center">C</div>
-              <span className="decoration-star star-one">âœ¦</span>
+              <span className="decoration-star star-one">{"\u2727"}</span>
               <span className="decoration-star star-two">{"\u2727"}</span>
             </div>
           </section>
 
           <section className="stats-row">
             <div className="stat-card">
-              <span className="stat-icon purple">â–£</span>
+              <span className="stat-icon purple">{"\u2661"}</span>
               <div>
                 <p>IN YOUR WATCHLIST</p>
                 <h3>
@@ -762,15 +737,15 @@ const sectionTitle =
             </div>
 
             <div className="stat-card">
-              <span className="stat-icon pink">â–¶</span>
+              <span className="stat-icon pink">{"\u25C8"}</span>
               <div>
                 <p>TITLES TO EXPLORE</p>
-                <h3>{movies.length.toString().padStart(2, "0")}</h3>
+                <h3>{apiMovies.length.toString().padStart(2, "0")}</h3>
               </div>
             </div>
 
             <div className="stat-card">
-              <span className="stat-icon yellow">â˜…</span>
+              <span className="stat-icon yellow">{"\u2605"}</span>
               <div>
                 <p>TOP COMMUNITY RATING</p>
                 <h3>
@@ -779,83 +754,83 @@ const sectionTitle =
               </div>
             </div>
           </section>
-
-          {activePage !== "TV Shows" && (
-            <section className="featured-section">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">EDITOR'S SPOTLIGHT</p>
-                <h2>Featured film</h2>
-              </div>
-
-              <span className="featured-label">
-                âœ¦ HANDPICKED FOR YOU
-              </span>
-            </div>
-
-            <div className="featured-card">
-              <img
-                className="featured-backdrop"
-                src="https://image.tmdb.org/t/p/w1280/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg"
-                alt=""
-              />
-
-              <div className="featured-overlay" />
-
-              <div className="featured-details">
-                <span className="featured-tag">FEATURED MOVIE</span>
-
-                <h2>Interstellar</h2>
-
-                <div className="featured-meta">
-                  <span>2014</span>
-                  <span>{"\u2022"}</span>
-                  <span>2h 49m</span>
-                  <span>{"\u2022"}</span>
-                  <span>Sci-Fi</span>
-                </div>
-
-                <p>
-                  Mankind's future lies beyond the stars. One journey will
-                  push the boundaries of space, time, and human connection.
-                </p>
-
-                <div className="featured-actions">
-                  <button
-                    className="primary-button"
-                    onClick={() => toggleWatchlist(movies[0].id)}
-                  >
-                    {savedMovies.includes(movies[0].id)
-                      ? "\u2713 In My Watchlist"
-                      : "+ Add to Watchlist"}
-                  </button>
-
-                  <button
-                    className="primary-button"
-                    onClick={() => {
-                      setSelectedTvId(null);
-                      setSelectedMovieId(movies[0].id);
-                    }}
-                  >
-                    View Details
-                  </button>
-
-                  <span className="featured-rating">
-                    â˜… 8.7 <small>/ 10</small>
-                  </span>
-                </div>
-              </div>
-
-              <div className="featured-poster">
-                <img
-                  src={movies[0].poster}
-                  alt="Interstellar poster"
-                />
-              </div>
-            </div>
-          </section>
+            </>
           )}
+          {activePage === "Discover" && featuredMovie && (
+              <section className="featured-section">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">EDITOR'S SPOTLIGHT</p>
+                  <h2>Featured film</h2>
+                </div>
 
+                <span className="featured-label">
+                  {"\u2727"} HANDPICKED FOR YOU
+                </span>
+              </div>
+
+              <div className="featured-card">
+                <img
+                  className="featured-backdrop"
+                  src={featuredMovie.poster}
+                  alt=""
+                />
+
+                <div className="featured-overlay" />
+
+                <div className="featured-details">
+                  <span className="featured-tag">FEATURED MOVIE</span>
+
+                  <h2>{featuredMovie.title}</h2>
+
+                  <div className="featured-meta">
+                    <span>{featuredMovie.year || "Year unavailable"}</span>
+                    <span>{"\u2022"}</span>
+                    <span>{featuredMovie.genre}</span>
+                  </div>
+
+                  <p>
+                    Discover {featuredMovie.title}, a featured selection
+                    from the CineTrack movie collection.
+                  </p>
+
+                  <div className="featured-actions">
+                    <button
+                      className="primary-button"
+                      onClick={() => toggleWatchlist(featuredMovie.id)}
+                    >
+                      {savedMovies.includes(featuredMovie.id)
+                        ? "\u2713 In My Watchlist"
+                        : "+ Add to Watchlist"}
+                    </button>
+
+                    <button
+                      className="primary-button"
+                      onClick={() => {
+                        setSelectedTvId(null);
+                        setSelectedMovieId(featuredMovie.id);
+                      }}
+                    >
+                      View Details
+                    </button>
+
+                    <span className="featured-rating">
+                      {"\u2605"} {featuredMovie.rating.toFixed(1)}
+                      <small> / 10</small>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="featured-poster">
+                  <img
+                    src={featuredMovie.poster}
+                    alt={`${featuredMovie.title} poster`}
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+          {activePage !== "Actor Profile" && (
           <section className="movies-section">
             <div className="section-heading movie-heading">
               <div>
@@ -1290,7 +1265,7 @@ const sectionTitle =
                               Season {record.seasonNumber ?? "?"}, Episode{" "}
                               {record.episodeNumber ?? "?"}
                               {record.runtimeMinutes != null
-                                ? ` Â· ${record.runtimeMinutes} min`
+                                ? ` Ãƒâ€šÃ‚Â· ${record.runtimeMinutes} min`
                                 : ""}
                             </p>
                           )}
@@ -1405,7 +1380,7 @@ const sectionTitle =
                 )
               )) : displayedMovies.length === 0 ? (
               <div className="empty-state">
-                <span className="empty-icon">âŒ•</span>
+                <span className="empty-icon">{"\u2315"}</span>
                 <h3>No movies found</h3>
 
                 <p>
@@ -1430,8 +1405,7 @@ const sectionTitle =
                     activePage === "TV Shows" ||
                     movie.genre === "TV Series" ||
                     (activePage === "My Library" &&
-                      savedTvShows.includes(movie.id) &&
-                      tvShows.some((show) => show.id === movie.id));
+                      savedTvShows.includes(movie.id));
                 
                   return (
                     <MovieCard
@@ -1481,10 +1455,12 @@ const sectionTitle =
               </div>
             )}
           </section>
+          )}
 
           {selectedMovieId !== null && (
             <MovieDetails
               movieId={selectedMovieId}
+              onActorClick={openActorProfile}
               onClose={() => setSelectedMovieId(null)}
             />
           )}
@@ -1495,11 +1471,34 @@ const sectionTitle =
               userId={DASHBOARD_USER_ID}
               history={backendHistory}
               onHistoryChanged={refreshDashboardData}
+              onActorClick={openActorProfile}
               onClose={() => setSelectedTvId(null)}
             />
           )}
+          {activePage === "Actor Profile" && selectedActorId !== null && (
+            <ActorProfile
+              actorId={selectedActorId}
+              onBack={() => {
+                setSelectedActorId(null);
+                setActivePage(actorReturnPage);
+              }}
+              onOpenTitle={(id, mediaType) => {
+                setSelectedActorId(null);
+                setActivePage(actorReturnPage);
+
+                if (mediaType === "tv") {
+                  setSelectedMovieId(null);
+                  setSelectedTvId(id);
+                } else {
+                  setSelectedTvId(null);
+                  setSelectedMovieId(id);
+                }
+              }}
+            />
+          )}
+
           <footer className="footer">
-            <span>Â© 2026 CineTrack</span>
+            <span>{"\u00A9"} 2026 CineTrack</span>
             <span>
               MADE FOR THE LOVE OF CINEMA{" "}
               <span className="footer-heart">{"\u2665"}</span>

@@ -1,6 +1,7 @@
 package CineTrack.Backend.model;
 
 import org.springframework.data.annotation.Id;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.util.ArrayList;
@@ -14,6 +15,7 @@ public class User {
 
     private String username;
     private String email;
+    private String passwordHash;
 
     private List<WatchlistItem> watchlist = new ArrayList<>();
 
@@ -58,6 +60,14 @@ public class User {
         this.email = email;
     }
 
+    @JsonIgnore
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
     public List<WatchlistItem> getWatchlist() {
         return watchlist;
     }

@@ -1,6 +1,8 @@
 package CineTrack.Backend.service;
 
 import CineTrack.Backend.dto.MovieDetailsDto;
+import CineTrack.Backend.dto.CastMemberDto;
+import CineTrack.Backend.dto.TmdbCreditsResponse;
 import CineTrack.Backend.dto.MovieDto;
 import CineTrack.Backend.dto.MovieSearchResponseDto;
 import CineTrack.Backend.dto.TmdbMovieDetailsResponse;
@@ -95,6 +97,27 @@ public class MovieService {
         );
     }
 
+    public List<CastMemberDto> getMovieCast(int movieId) {
+        TmdbCreditsResponse response = restClient.get()
+                .uri("/movie/" + movieId + "/credits")
+                .header("Authorization", "Bearer " + apiToken)
+                .retrieve()
+                .body(TmdbCreditsResponse.class);
+
+        if (response == null || response.getCast() == null) {
+            return List.of();
+        }
+
+        return response.getCast().stream()
+                .limit(20)
+                .map(member -> new CastMemberDto(
+                        member.getId(),
+                        member.getName(),
+                        member.getCharacter(),
+                        member.getProfilePath()
+                ))
+                .toList();
+    }
     public TmdbMovieResponse getMovieRecommendations(int movieId) {
         return restClient.get()
                 .uri("/movie/" + movieId + "/recommendations")

@@ -1,6 +1,9 @@
 package CineTrack.Backend.controller;
 
+import java.util.List;
+
 import CineTrack.Backend.dto.TvDetailsDto;
+import CineTrack.Backend.dto.CastMemberDto;
 import CineTrack.Backend.dto.TvEpisodeDetailsDto;
 import CineTrack.Backend.dto.TvSearchResponseDto;
 import CineTrack.Backend.service.TvService;
@@ -20,6 +23,14 @@ public class TvController {
         this.tvService = tvService;
     }
 
+    @GetMapping("/{tvId}/cast")
+    public List<CastMemberDto> getTvCast(@PathVariable int tvId) {
+        return tvService.getTvCast(tvId);
+    }
+    @GetMapping("/popular")
+    public TvSearchResponseDto getPopularTv() {
+        return tvService.getPopularTv();
+    }
     @GetMapping("/search")
     public TvSearchResponseDto searchTv(@RequestParam String query) {
         return tvService.searchTv(query);

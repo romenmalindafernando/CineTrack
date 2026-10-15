@@ -1,13 +1,16 @@
+import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import {
   getTvDetails,
+  getTvCast,
   getEpisodeDetails,
   addWatchedEpisode,
   removeWatchedEpisode,
 } from "../services/cinetrackApi";
 import type {
   TvDetails as TvDetailsData,
+  CastMember,
   TvEpisodeDetails,
   ViewingHistoryRecord,
 } from "../services/cinetrackApi";
@@ -18,6 +21,7 @@ interface TvDetailsProps {
   userId: string;
   history: ViewingHistoryRecord[];
   onHistoryChanged: () => Promise<void>;
+  onActorClick: (actorId: number) => void;
   onClose: () => void;
 }
 
@@ -26,11 +30,14 @@ function TvDetails({
   userId,
   history,
   onHistoryChanged,
+  onActorClick,
   onClose,
 }: TvDetailsProps) {
   const [show, setShow] = useState<TvDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [cast, setCast] = useState<CastMember[]>([]);
+  const [castLoading, setCastLoading] = useState(true);
   const [seasonNumber, setSeasonNumber] = useState(1);
   const [episodeNumber, setEpisodeNumber] = useState(1);
   const [episode, setEpisode] = useState<TvEpisodeDetails | null>(null);
@@ -69,6 +76,30 @@ function TvDetails({
     }
 
     void loadDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [tvId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCast() {
+      setCast([]);
+      setCastLoading(true);
+
+      try {
+        const result = await getTvCast(tvId);
+        if (!cancelled) setCast(result);
+      } catch {
+        if (!cancelled) setCast([]);
+      } finally {
+        if (!cancelled) setCastLoading(false);
+      }
+    }
+
+    void loadCast();
+
     return () => {
       cancelled = true;
     };
@@ -154,7 +185,20 @@ function TvDetails({
     }
   }
 
-  return (
+// Lock background page scrolling while details are open.
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
+  return createPortal((
     <div className="details-overlay" onClick={onClose}>
       <section
         className="details-panel"
@@ -186,7 +230,7 @@ function TvDetails({
             <div
               className="details-backdrop"
               style={{
-                backgroundImage: `linear-gradient(90deg, #111020 5%, rgba(17,16,32,.82) 55%, rgba(17,16,32,.35)), url("${imageUrl(show.backdropPath, "w1280")}")`,
+                backgroundImage: `linear-gradient(90deg, #111020 5%, rgba(17,16,32,.82) 55%, rgba(17,16,32,.35)), url("${imageUrl(show.posterPath, "w500")}")`,
               }}
             />
 
@@ -230,6 +274,43 @@ function TvDetails({
                   {show.overview ||
                     "No overview is available for this TV show."}
                 </p>
+
+                <section className="cast-section" aria-label="Cast and characters">
+                  <h3>Cast &amp; Characters</h3>
+                  {castLoading ? (
+                    <p className="cast-message">Loading cast...</p>
+                  ) : cast.length > 0 ? (
+                    <div className="cast-list">
+                      {cast.map((member) => (
+                        <article className="cast-card" key={member.id}>
+                          <button
+                            type="button"
+                            className="cast-actor-button"
+                            onClick={() => onActorClick(member.id)}
+                            aria-label={`View ${member.name}'s actor profile`}
+                          >
+                          <img
+                            className="cast-photo"
+                            src={
+                              member.profilePath
+                                ? `https://image.tmdb.org/t/p/w185${member.profilePath}`
+                                : "https://placehold.co/185x278/17152b/ffffff?text=No+Photo"
+                            }
+                            alt={`${member.name} as ${member.character}`}
+                            loading="lazy"
+                          />
+                          <p className="cast-name">{member.name}</p>
+                          </button>
+                          <p className="cast-character">
+                            {member.character || "Character unavailable"}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="cast-message">Cast information is currently unavailable.</p>
+                  )}
+                </section>
 
                 <div className="episode-tracker">
                   <h3>Track a TV Episode</h3>
@@ -351,7 +432,7 @@ function TvDetails({
         ) : null}
       </section>
     </div>
-  );
+  ), document.body);
 }
 
 export default TvDetails;

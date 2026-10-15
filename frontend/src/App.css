@@ -1,4 +1,4 @@
-﻿@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :root {
   font-family: "DM Sans", sans-serif;
@@ -127,18 +127,75 @@ a:focus:not(:focus-visible) {
   color: #a6a2b5;
   text-align: left;
   font-size: 13px;
-  transition: background 160ms ease, color 160ms ease;
+  position: relative;
+  isolation: isolate;
+  transition:
+    background 220ms ease,
+    color 220ms ease,
+    border-color 220ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 220ms ease;
+}
+
+.nav-item::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 20%;
+  bottom: 20%;
+  left: 0;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #c4adff, #8e6bed);
+  opacity: 0;
+  transform: scaleY(0.45);
+  transform-origin: center;
+  transition:
+    opacity 220ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .nav-item:hover {
   color: #fff;
   background: #1b1927;
+  transform: translateX(3px);
 }
 
 .nav-item.active {
   color: #c8b8ff;
-  border-color: #8e6bed25;
-  background: linear-gradient(90deg, #8e6bed24, #8e6bed09);
+  border-color: #8e6bed35;
+  background: linear-gradient(100deg, #8e6bed2e, #8e6bed09);
+  box-shadow: inset 0 0 18px #8e6bed08;
+}
+
+.nav-item.active::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.nav-icon {
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 220ms ease;
+}
+
+.nav-item:hover .nav-icon {
+  transform: scale(1.1);
+}
+
+.nav-item.active .nav-icon {
+  transform: scale(1.06);
+}
+
+.nav-count {
+  transition:
+    background 220ms ease,
+    transform 220ms ease;
+}
+
+.nav-item:hover .nav-count {
+  background: #34294e;
+  transform: translateX(1px);
 }
 
 .nav-icon {
@@ -1579,5 +1636,36 @@ button {
 
   .monthly-viewing-chart {
     height: 210px;
+  }
+}
+
+/* Smooth transitions between CineTrack sections. */
+.page-content {
+  animation: cinetrack-page-enter 380ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+@keyframes cinetrack-page-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-content {
+    animation: none;
+  }
+
+  .nav-item,
+  .nav-item::before,
+  .nav-icon,
+  .nav-count {
+    transition: none !important;
+    transform: none !important;
   }
 }

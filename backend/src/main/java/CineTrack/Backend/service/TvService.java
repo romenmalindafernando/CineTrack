@@ -1,6 +1,8 @@
 package CineTrack.Backend.service;
 
 import CineTrack.Backend.dto.TmdbTvDetailsResponse;
+import CineTrack.Backend.dto.CastMemberDto;
+import CineTrack.Backend.dto.TmdbCreditsResponse;
 import CineTrack.Backend.dto.TmdbTvEpisodeResponse;
 import CineTrack.Backend.dto.TvEpisodeDetailsDto;
 import CineTrack.Backend.dto.TmdbTvResponse;
@@ -27,6 +29,37 @@ public class TvService {
                 .build();
     }
 
+    public TvSearchResponseDto getPopularTv() {
+
+        TmdbTvResponse response = restClient.get()
+                .uri("/tv/popular")
+                .header("Authorization", "Bearer " + apiToken)
+                .retrieve()
+                .body(TmdbTvResponse.class);
+
+        if (response == null || response.getResults() == null) {
+            return new TvSearchResponseDto(1, 0, 0, List.of());
+        }
+
+        List<TvDto> tvShows = response.getResults()
+                .stream()
+                .map(tv -> new TvDto(
+                        tv.getId(),
+                        tv.getName(),
+                        tv.getFirstAirDate(),
+                        tv.getVoteAverage(),
+                        tv.getPosterPath(),
+                        tv.getOverview()
+                ))
+                .toList();
+
+        return new TvSearchResponseDto(
+                response.getPage(),
+                response.getTotalPages(),
+                response.getTotalResults(),
+                tvShows
+        );
+    }
     public TvSearchResponseDto searchTv(String query) {
 
         TmdbTvResponse response = restClient.get()
@@ -98,6 +131,27 @@ public class TvService {
         );
     }
 
+    public List<CastMemberDto> getTvCast(int tvId) {
+        TmdbCreditsResponse response = restClient.get()
+                .uri("/tv/" + tvId + "/credits")
+                .header("Authorization", "Bearer " + apiToken)
+                .retrieve()
+                .body(TmdbCreditsResponse.class);
+
+        if (response == null || response.getCast() == null) {
+            return List.of();
+        }
+
+        return response.getCast().stream()
+                .limit(20)
+                .map(member -> new CastMemberDto(
+                        member.getId(),
+                        member.getName(),
+                        member.getCharacter(),
+                        member.getProfilePath()
+                ))
+                .toList();
+    }
     public TvEpisodeDetailsDto getEpisodeDetails(
             int tvId,
             int seasonNumber,
