@@ -216,10 +216,12 @@ function TvDetails({
         </button>
 
         {loading ? (
-          <div className="details-message">
-            <h2>Loading TV show details...</h2>
-            <p>Getting the latest information from CineTrack.</p>
-          </div>
+          <div
+            className="details-loading"
+            role="status"
+            aria-label="Loading TV show details"
+            aria-live="polite"
+          />
         ) : error ? (
           <div className="details-message">
             <h2>Details unavailable</h2>
@@ -230,7 +232,7 @@ function TvDetails({
             <div
               className="details-backdrop"
               style={{
-                backgroundImage: `linear-gradient(90deg, #111020 5%, rgba(17,16,32,.82) 55%, rgba(17,16,32,.35)), url("${imageUrl(show.posterPath, "w500")}")`,
+                backgroundImage: `linear-gradient(180deg, rgba(12, 10, 24, 0.12) 0%, rgba(12, 10, 24, 0.28) 48%, rgba(12, 10, 24, 0.88) 100%), url("${imageUrl((show as typeof show & { backdropPath?: string | null }).backdropPath || show.posterPath, "w1280")}")`,
               }}
             />
 

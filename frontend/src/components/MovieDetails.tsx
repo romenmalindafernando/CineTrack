@@ -119,10 +119,12 @@ function MovieDetails({ movieId, onActorClick, onClose }: MovieDetailsProps) {
         </button>
 
         {loading ? (
-          <div className="details-message">
-            <h2>Loading movie details...</h2>
-            <p>Getting the latest information from CineTrack.</p>
-          </div>
+          <div
+            className="details-loading"
+            role="status"
+            aria-label="Loading movie details"
+            aria-live="polite"
+          />
         ) : error ? (
           <div className="details-message">
             <h2>Details unavailable</h2>
@@ -133,7 +135,7 @@ function MovieDetails({ movieId, onActorClick, onClose }: MovieDetailsProps) {
             <div
               className="details-backdrop"
               style={{
-                backgroundImage: `linear-gradient(90deg, #111020 5%, rgba(17,16,32,.82) 55%, rgba(17,16,32,.35)), url("${imageUrl(movie.posterPath, "w500")}")`,
+                backgroundImage: `linear-gradient(180deg, rgba(12, 10, 24, 0.12) 0%, rgba(12, 10, 24, 0.28) 48%, rgba(12, 10, 24, 0.88) 100%), url("${imageUrl((movie as typeof movie & { backdropPath?: string | null }).backdropPath || movie.posterPath, "w1280")}")`,
               }}
             />
 
